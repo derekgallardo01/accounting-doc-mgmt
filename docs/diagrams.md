@@ -52,3 +52,46 @@ flowchart TB
     L3 --> M3[matter_id, doc_type, final_partner_signoff, delivered_to_client_at]
     L4 --> M4[matter_id, author, communication_type]
 ```
+
+## Capacity forecast
+
+```mermaid
+flowchart LR
+    B[MockSharePoint<br/>matters + due dates] --> F[forecast_capacity]
+    S[Staff list<br/>role + weekly hours] --> F
+    E[DEFAULT_EFFORT_ESTIMATES<br/>hours per role per matter kind] --> F
+
+    F --> W[Weekly slots<br/>demand vs supply per role]
+    W --> BN{demand > supply?}
+    BN -->|yes| BOT[Bottleneck week]
+    BN -->|no| OK[Healthy week]
+
+    BOT --> H{Same role deficit<br/>>= 2 weeks?}
+    H -->|yes| HIRE[HiringSuggestion:<br/>role + start-by + FTE]
+    BOT --> O{One matter kind<br/>>= 40% of deficit AND >= 40h?}
+    O -->|yes| OUT[OutsourceSuggestion:<br/>kind + hours to reassign]
+```
+
+## Client portal provisioning
+
+```mermaid
+flowchart LR
+    M[Matter + Documents] --> PP[provision_client_portal]
+    C[Client email + name] --> PP
+    E[link_expiry_days<br/>default 90] --> PP
+
+    PP --> GI[GuestInvite<br/>scoped to matter, not site]
+    PP --> SL1[SharingLink: Source Documents<br/>edit access<br/>expires in 90d]
+    PP --> SL2[SharingLink: Deliverables<br/>view-only<br/>expires in 90d]
+    PP --> LP[LandingPage]
+
+    LP --> O[Outstanding<br/>what client owes us]
+    LP --> R[Received<br/>being reviewed]
+    LP --> RS[Ready for sign-off<br/>needs client e-sign]
+    LP --> D[Signed off<br/>done]
+
+    O --> MD[to_markdown]
+    R --> MD
+    RS --> MD
+    D --> MD
+```

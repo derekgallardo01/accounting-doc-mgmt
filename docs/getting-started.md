@@ -35,6 +35,8 @@ accounting-docs flow-export --out approval-flow.json
 accounting-docs ask "What's the status of matter m-01-tax-2026?"
 accounting-docs ask "Which matters are due in the next 60 days?"
 accounting-docs ask "Show me unsigned documents for Ridgeway Bakery"
+accounting-docs capacity-forecast --horizon-weeks 52
+accounting-docs client-portal m-01-tax-2026
 ```
 
 ## Run the end-to-end sample app
@@ -50,6 +52,6 @@ suitable for handing to the practice manager.
 ## Run tests + evals
 
 ```bash
-python -m pytest -q     # 38 unit tests
-python evals/run.py     # 7 golden eval cases
+python -m pytest -q     # 58 unit tests
+python evals/run.py     # 11 golden eval cases
 ```

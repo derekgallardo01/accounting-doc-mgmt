@@ -95,6 +95,78 @@ def _copilot_unsigned() -> dict:
     return {"intent": ans.intent, "matched_client_count": len(ans.matched_clients)}
 
 
+def _capacity_forecast_default_firm() -> dict:
+    from accounting_doc_mgmt.capacity_planner import DEFAULT_FIRM, forecast_capacity
+    b = MockSharePoint()
+    forecast = forecast_capacity(b, staff=DEFAULT_FIRM, horizon_weeks=52)
+    return {
+        "horizon_weeks": forecast.horizon_weeks,
+        "bottleneck_count": len(forecast.bottleneck_weeks),
+        "hiring_suggestion_count": len(forecast.hiring),
+        "outsource_suggestion_count": len(forecast.outsource),
+    }
+
+
+def _capacity_forecast_huge_firm() -> dict:
+    from accounting_doc_mgmt.capacity_planner import Staff, forecast_capacity
+    b = MockSharePoint()
+    huge_firm = [
+        Staff("a@x.com", "A", "Partner", 200.0),
+        Staff("b@x.com", "B", "Senior Accountant", 400.0),
+        Staff("c@x.com", "C", "Staff", 200.0),
+    ]
+    forecast = forecast_capacity(b, staff=huge_firm, horizon_weeks=52)
+    return {
+        "bottleneck_count": len(forecast.bottleneck_weeks),
+        "hiring_suggestion_count": len(forecast.hiring),
+        "outsource_suggestion_count": len(forecast.outsource),
+    }
+
+
+def _client_portal_provision() -> dict:
+    from accounting_doc_mgmt.client_portal_provisioner import (
+        MockPortalClient, provision_client_portal,
+    )
+    b = MockSharePoint()
+    matter = next(m for m in b.list_matters() if m.id == "m-01-tax-2026")
+    docs = b.list_documents(matter.id)
+    portal = MockPortalClient()
+    result = provision_client_portal(
+        matter=matter, documents=docs,
+        client_email="contact@bakery.com", client_display_name="Owner - Bakery",
+        portal_client=portal,
+    )
+    source_link = next(l for l in result.sharing_links if l.library == "Source Documents")
+    deliv_link = next(l for l in result.sharing_links if l.library == "Deliverables")
+    return {
+        "guest_invite_count": len(result.guest_invites),
+        "sharing_link_count": len(result.sharing_links),
+        "source_link_is_edit": source_link.link_type == "edit",
+        "deliverables_link_is_view": deliv_link.link_type == "view_only",
+    }
+
+
+def _client_portal_landing_page() -> dict:
+    from accounting_doc_mgmt.client_portal_provisioner import (
+        MockPortalClient, provision_client_portal,
+    )
+    b = MockSharePoint()
+    matter = next(m for m in b.list_matters() if m.id == "m-01-tax-2026")
+    docs = b.list_documents(matter.id)
+    portal = MockPortalClient()
+    result = provision_client_portal(
+        matter=matter, documents=docs,
+        client_email="c@x.com", client_display_name="Owner",
+        portal_client=portal,
+    )
+    outstanding = [i for i in result.landing_page.items if i.status == "outstanding"]
+    md = result.landing_page.to_markdown()
+    return {
+        "outstanding_count": len(outstanding),
+        "markdown_has_please_provide": "## Please provide" in md,
+    }
+
+
 OPS = {
     "validate_default_site": _validate_default_site,
     "backend_counts": _backend_counts,
@@ -103,6 +175,10 @@ OPS = {
     "copilot_matter_status": _copilot_matter_status,
     "copilot_due_60": _copilot_due_60,
     "copilot_unsigned": _copilot_unsigned,
+    "capacity_forecast_default_firm": _capacity_forecast_default_firm,
+    "capacity_forecast_huge_firm": _capacity_forecast_huge_firm,
+    "client_portal_provision": _client_portal_provision,
+    "client_portal_landing_page": _client_portal_landing_page,
 }
 
 

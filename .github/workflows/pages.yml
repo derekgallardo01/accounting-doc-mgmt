@@ -40,6 +40,10 @@ jobs:
 
           from accounting_doc_mgmt.approval_flow import run_approval_flow
           from accounting_doc_mgmt.backend import Client, MockSharePoint, NOW
+          from accounting_doc_mgmt.capacity_planner import DEFAULT_FIRM, forecast_capacity
+          from accounting_doc_mgmt.client_portal_provisioner import (
+              MockPortalClient, provision_client_portal,
+          )
           from accounting_doc_mgmt.copilot_index import answer_query
           from accounting_doc_mgmt.matter_provisioner import MatterSpec, provision_matter
           from accounting_doc_mgmt.site_definition import DEFAULT_SITE, validate_site_definition
@@ -93,6 +97,20 @@ jobs:
               "Show me documents for Kaminski Auto Repair that haven't been signed off",
           ]
           answers = [answer_query(q, backend) for q in queries]
+
+          # Capacity forecast
+          forecast = forecast_capacity(backend, staff=DEFAULT_FIRM, horizon_weeks=52)
+
+          # Client portal provisioning for the tax-2026 matter
+          portal_client = MockPortalClient()
+          portal_matter = next(m for m in backend.list_matters() if m.id == "m-11-tax-2026")
+          portal_docs = backend.list_documents("m-11-tax-2026")
+          portal_result = provision_client_portal(
+              matter=portal_matter, documents=portal_docs,
+              client_email="owner@kaminski-auto.com",
+              client_display_name="Kaminski Auto Repair",
+              portal_client=portal_client,
+          )
 
           # Site validation
           site_issues = validate_site_definition(DEFAULT_SITE)
@@ -160,6 +178,56 @@ jobs:
 
           site_status_class = "ok" if not site_issues else "bad"
           site_status_label = "VALID" if not site_issues else f"{len(site_issues)} issues"
+
+          # Capacity forecast rendering
+          if forecast.bottleneck_weeks:
+              cap_rows = []
+              for slot in forecast.bottleneck_weeks[:5]:
+                  cap_rows.append(
+                      "<tr>"
+                      f"<td>{slot.week_start.date()}</td>"
+                      f"<td>{html.escape(slot.role)}</td>"
+                      f"<td>{slot.demand_hours:.0f}h</td>"
+                      f"<td>{slot.supply_hours:.0f}h</td>"
+                      f"<td><span class='badge bad'>{slot.deficit():.0f}h</span></td>"
+                      "</tr>"
+                  )
+              cap_body = (
+                  "<table>"
+                  "<thead><tr><th>Week of</th><th>Role</th><th>Demand</th><th>Supply</th><th>Deficit</th></tr></thead>"
+                  f"<tbody>{''.join(cap_rows)}</tbody>"
+                  "</table>"
+              )
+              cap_extras = []
+              for h in forecast.hiring:
+                  cap_extras.append(
+                      "<div class='meta'>"
+                      f"<strong>Hiring:</strong> {html.escape(h.role)} - start by {h.start_week.date()} - {h.fte_needed} FTE"
+                      "</div>"
+                  )
+              for o in forecast.outsource:
+                  cap_extras.append(
+                      "<div class='meta'>"
+                      f"<strong>Outsource:</strong> {html.escape(o.matter_kind)} - ~{o.fte_hours_needed:.0f}h to reassign"
+                      "</div>"
+                  )
+              cap_extras_html = "".join(cap_extras)
+          else:
+              cap_body = "<p class='meta'>No bottleneck weeks over the 52-week horizon. Firm is well-staffed for this matter book.</p>"
+              cap_extras_html = ""
+
+          # Client portal rendering
+          portal_links_html = ""
+          for link in portal_result.sharing_links:
+              badge = "ok" if link.link_type == "edit" else "warn"
+              portal_links_html += (
+                  "<tr>"
+                  f"<td>{html.escape(link.library)}</td>"
+                  f"<td><span class='badge {badge}'>{html.escape(link.link_type)}</span></td>"
+                  f"<td>{link.expires_at.date()}</td>"
+                  "</tr>"
+              )
+          landing_md_html = html.escape(portal_result.landing_page.to_markdown()).replace("\n", "<br>")
 
           page = f"""<!DOCTYPE html>
           <html lang="en">
@@ -256,6 +324,24 @@ jobs:
                 <h2>Copilot query layer</h2>
                 <p>Three canonical intents: matter status, upcoming due dates, unsigned documents per client.</p>
                 {answers_html}
+              </div>
+
+              <div class="card">
+                <h2>Tax-season capacity forecast (52 weeks)</h2>
+                <div class="summary-line">{html.escape(forecast.summary())}</div>
+                {cap_body}
+                {cap_extras_html}
+              </div>
+
+              <div class="card">
+                <h2>Client portal provisioning ({html.escape(portal_matter.id)})</h2>
+                <div class="summary-line">{html.escape(portal_result.summary())}</div>
+                <table>
+                  <thead><tr><th>Library</th><th>Link type</th><th>Expires</th></tr></thead>
+                  <tbody>{portal_links_html}</tbody>
+                </table>
+                <div class="kicker" style="margin-top: 16px;">Landing page preview</div>
+                <div class="a" style="font-family: Consolas, monospace; font-size: 12px;">{landing_md_html}</div>
               </div>
 
               <div class="footer">

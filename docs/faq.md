@@ -69,10 +69,68 @@ Both are ~2-3 days of integration work on top of this kit.
 
 ---
 
+**Q: When should I actually run the capacity forecast? What's the
+timing?**
+
+Run it three times a year:
+
+- **January**, after the client roster is set for the year. This is
+  the "do I need to hire for tax season?" run. If it fires a
+  HiringSuggestion, you have ~10 weeks to recruit before the April 15
+  crunch.
+- **June**, before Q3 review season. Same shape, different deadline.
+- **On matter add** — every time you add a big matter (a new audit
+  client, a large advisory engagement), re-run to see if it broke
+  next quarter's capacity.
+
+Running it hourly is overkill — matter counts and staff availability
+don't change that fast.
+
+---
+
+**Q: The capacity planner says "0 bottlenecks" but I'm sure we're
+overloaded. What's wrong?**
+
+Two things to check:
+
+1. Are the effort estimates in `DEFAULT_EFFORT_ESTIMATES` too low for
+   your firm? A tax return at 6 senior hours is fast; if your firm
+   actually spends 12 hours per return, double the estimate.
+2. Is `Staff.weekly_hours` measuring paid hours instead of billable?
+   Partners paid for 40 hours often only have 25 billable — the rest
+   is admin, sales, CPE. Set `weekly_hours` to billable-only.
+
+Retune, re-run; bottlenecks emerge.
+
+---
+
+**Q: Can the client portal share with multiple client contacts, not
+just one?**
+
+Yes, though `provision_client_portal()` takes one email. Call it once
+per contact — the `MockPortalClient` accumulates invites + links
+across calls. In production, ensure your Graph portal client
+deduplicates guest accounts with the same email.
+
+---
+
+**Q: What happens when a sharing link expires? Does the client just
+lose access silently?**
+
+Yes — that's SharePoint's default. In production, add a scheduled job
+that runs weekly and checks
+`portal_client.list_links(include_revoked=False)` for links expiring
+within 14 days, then emails the delivery lead. The kit doesn't ship
+this job (depends on your notification stack: Teams / Outlook /
+Slack), but the primitive is there.
+
+---
+
 **Q: Do you offer this as a delivered engagement?**
 
 Yes. See my Upwork profile at
 [upwork.com/freelancers/~derekgallardo](https://www.upwork.com/freelancers/~derekgallardo)
 or email derekgallardo01@gmail.com. Typical engagement: paid $175
 1-hr scoping call → USD 3,500 - 5,000 fixed for the build → USD
-250/mo Power Automate flow maintenance retainer.
+250/mo Power Automate flow maintenance retainer + capacity forecast
+runs per season.

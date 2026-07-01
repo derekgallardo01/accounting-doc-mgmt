@@ -59,6 +59,41 @@
         {"path": "intent", "eq": "unsigned_docs_for_client"},
         {"path": "matched_client_count", "eq": 1}
       ]
+    },
+    {
+      "name": "capacity_planner_finds_tax_season_crunch",
+      "op": "capacity_forecast_default_firm",
+      "assertions": [
+        {"path": "horizon_weeks", "eq": 52},
+        {"path": "bottleneck_count", "gte": 1},
+        {"path": "outsource_suggestion_count", "gte": 1}
+      ]
+    },
+    {
+      "name": "capacity_planner_no_bottleneck_for_huge_firm",
+      "op": "capacity_forecast_huge_firm",
+      "assertions": [
+        {"path": "bottleneck_count", "eq": 0},
+        {"path": "hiring_suggestion_count", "eq": 0}
+      ]
+    },
+    {
+      "name": "client_portal_provisions_invite_and_links",
+      "op": "client_portal_provision",
+      "assertions": [
+        {"path": "guest_invite_count", "eq": 1},
+        {"path": "sharing_link_count", "eq": 2},
+        {"path": "source_link_is_edit", "eq": true},
+        {"path": "deliverables_link_is_view", "eq": true}
+      ]
+    },
+    {
+      "name": "client_portal_landing_page_flags_outstanding",
+      "op": "client_portal_landing_page",
+      "assertions": [
+        {"path": "outstanding_count", "gte": 1},
+        {"path": "markdown_has_please_provide", "eq": true}
+      ]
     }
   ]
 }

@@ -125,3 +125,75 @@ Edit `DEFAULT_SITE` in `site_definition.py` OR write a JSON file and
 load it via `load_site_definition("path.json")`. The new library will
 be picked up by `validate_site_definition()`, `provision_matter()`, and
 the CLI's `validate-site` command.
+
+## Tune the capacity planner
+
+Three sets of knobs in `capacity_planner.py`:
+
+### Effort estimates per matter kind
+
+```python
+DEFAULT_EFFORT_ESTIMATES = {
+    "tax_return":       {"Partner": 2.0,  "Senior Accountant": 6.0,  "Staff": 3.0},
+    "quarterly_review": {"Partner": 0.5,  "Senior Accountant": 2.5,  "Staff": 1.5},
+    "audit":            {"Partner": 8.0,  "Senior Accountant": 30.0, "Staff": 10.0},
+    "advisory":         {"Partner": 4.0,  "Senior Accountant": 4.0,  "Staff": 0.0},
+}
+```
+
+Bump these based on the firm's historical time-tracking data. Audit
+matters vary widely — a first-year audit of a healthcare client is
+much heavier than a repeat audit of a small manufacturer. Consider
+adding subtypes.
+
+### Firm composition (`DEFAULT_FIRM`)
+
+Replace `DEFAULT_FIRM` with your actual staff. `Staff.weekly_hours`
+reflects **available** hours, not paid hours — factor in vacation +
+CPE + admin time.
+
+### Hiring/outsource thresholds
+
+- `_suggest_hiring` fires when a role has 2+ bottleneck weeks.
+- `_suggest_outsource` fires when a matter kind contributes >= 40% of
+  deficit AND >= 40 hours.
+
+These are heuristics tuned for small-to-mid firms. Bigger firms may
+want to raise the deficit threshold to 80 hours before recommending
+outsource.
+
+## Wire the client portal to real SharePoint external sharing
+
+The `MockPortalClient` methods map onto the following Graph endpoints:
+
+- `invite_guest` → `POST /invitations` (creates the B2B guest account
+  + sends the redemption invitation email)
+- `create_sharing_link` → `POST /sites/{siteId}/lists/{listId}/items/{id}/createLink`
+  (creates the sharing link with `expirationDateTime` set)
+- `revoke_sharing_link` → `DELETE /permissions/{permissionId}`
+
+Wrap them in a `GraphPortalClient` class matching the `MockPortalClient`
+interface. `provision_client_portal` is unchanged.
+
+## Tune the client portal expiry policy
+
+`DEFAULT_LINK_EXPIRY_DAYS = 90` in `client_portal_provisioner.py`. Some
+firms' data-handling policies require 30 days; the SEC's Regulation
+S-P has stricter rules for public-company clients. Adjust the constant
+per client contract. The provisioner emits a warning when the requested
+expiry exceeds 180 days, but doesn't refuse — the delivery lead makes
+the call.
+
+## Customize the landing page templates
+
+`_build_landing_page()` in `client_portal_provisioner.py` hard-codes
+the expected source docs per matter kind:
+
+```python
+if matter.kind == "tax_return":
+    expected_source_docs = ["W-2", "1099-Div", "Prior-year return"]
+```
+
+Extend this list per client — some individuals also need Schedule K-1s,
+brokerage statements, IRA distributions, etc. The "outstanding" section
+of the landing page is only as useful as this list is complete.
