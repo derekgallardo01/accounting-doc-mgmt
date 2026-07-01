@@ -1,0 +1,16 @@
+{
+  "repo": "accounting-doc-mgmt",
+  "title": "Accounting doc + PM",
+  "kicker": "SharePoint + Power Automate + Copilot",
+  "tagline": "Document + project management system for accounting firms. JSON-defined SharePoint site, 3-step approval flow with retry + DLQ, Copilot query layer over client matters. Bundled 10-client mock tenant.",
+  "features": [
+    { "label": "SharePoint site", "value": "4 libraries + retention" },
+    { "label": "Approval flow", "value": "3-step + retry + DLQ" },
+    { "label": "Copilot queries", "value": "3 canonical intents" },
+    { "label": "Tests", "value": "38 pytest + 7 evals" }
+  ],
+  "theme": {
+    "primary": "#7c2d12",
+    "accent": "#f97316"
+  }
+}

@@ -1,0 +1,28 @@
+[project]
+name = "accounting-doc-mgmt"
+version = "1.0.0"
+description = "SharePoint + Power Automate document / project management system for accounting firms. JSON-defined client-matter libraries, approval flows with retry + dead-letter queue, and a Copilot query layer answering 'what's the status of matter X?'. Stub-by-default mocked tenant; documented Graph swap point."
+authors = [{name = "Derek Gallardo", email = "derekgallardo01@gmail.com"}]
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+graph = [
+    "msgraph-sdk>=1.0.0",
+    "msal>=1.24.0",
+]
+
+[project.scripts]
+accounting-docs = "accounting_doc_mgmt.cli:main"
+
+[project.urls]
+Repository = "https://github.com/derekgallardo01/accounting-doc-mgmt"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

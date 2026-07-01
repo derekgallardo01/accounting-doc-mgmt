@@ -1,0 +1,280 @@
+name: Deploy live demo to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: pip install --quiet -e .
+
+      - name: Generate the static demo report
+        run: |
+          mkdir -p site
+          python - <<'PY'
+          import html
+          import sys
+          from datetime import timedelta
+          sys.path.insert(0, "src")
+
+          from accounting_doc_mgmt.approval_flow import run_approval_flow
+          from accounting_doc_mgmt.backend import Client, MockSharePoint, NOW
+          from accounting_doc_mgmt.copilot_index import answer_query
+          from accounting_doc_mgmt.matter_provisioner import MatterSpec, provision_matter
+          from accounting_doc_mgmt.site_definition import DEFAULT_SITE, validate_site_definition
+
+          # Set up baseline tenant
+          backend = MockSharePoint()
+
+          # Add a new client (the "onboarding" scenario)
+          new_client = Client(
+              id="c-11",
+              name="Kaminski Auto Repair",
+              kind="small_business",
+              industry="automotive",
+              partner_upn="sarah.jones@acmecpas.onmicrosoft.com",
+          )
+          backend._clients.append(new_client)
+
+          # Provision 3 matters
+          matter_specs = [
+              MatterSpec(
+                  matter_id="m-11-tax-2026", client_id="c-11", kind="tax_return", year=2026,
+                  partner_upn=new_client.partner_upn,
+                  senior_upn="raj.patel@acmecpas.onmicrosoft.com",
+                  staff_upns=["tyler.brooks@acmecpas.onmicrosoft.com"],
+                  client_reviewer_upn="owner@kaminski-auto.com",
+                  due_date=NOW + timedelta(days=280),
+              ),
+              MatterSpec(
+                  matter_id="m-11-q3-2026", client_id="c-11", kind="quarterly_review", year=2026,
+                  partner_upn=new_client.partner_upn,
+                  senior_upn="raj.patel@acmecpas.onmicrosoft.com",
+                  staff_upns=["tyler.brooks@acmecpas.onmicrosoft.com"],
+                  due_date=NOW + timedelta(days=45),
+              ),
+              MatterSpec(
+                  matter_id="m-11-advisory-2026", client_id="c-11", kind="advisory", year=2026,
+                  partner_upn=new_client.partner_upn,
+                  senior_upn="raj.patel@acmecpas.onmicrosoft.com",
+                  due_date=NOW + timedelta(days=30),
+              ),
+          ]
+          provision_results = [provision_matter(spec, backend) for spec in matter_specs]
+
+          # Run approval flow on Q3
+          flow_summary = run_approval_flow(backend, "m-11-q3-2026")
+
+          # Answer 3 queries
+          queries = [
+              "What's the status of matter m-11-q3-2026?",
+              "Which matters are due in the next 60 days?",
+              "Show me documents for Kaminski Auto Repair that haven't been signed off",
+          ]
+          answers = [answer_query(q, backend) for q in queries]
+
+          # Site validation
+          site_issues = validate_site_definition(DEFAULT_SITE)
+
+          # Render library summary
+          lib_rows = []
+          for lib in DEFAULT_SITE.libraries:
+              approvals = ", ".join(lib.approval_required_for) if lib.approval_required_for else "-"
+              lib_rows.append(
+                  "<tr>"
+                  f"<td>{html.escape(lib.name)}</td>"
+                  f"<td>{len(lib.metadata_columns)}</td>"
+                  f"<td>{lib.retention_years}y</td>"
+                  f"<td>{html.escape(approvals)}</td>"
+                  "</tr>"
+              )
+          libs_html = "\n".join(lib_rows)
+
+          # Provision cards
+          prov_cards = []
+          for spec, result in zip(matter_specs, provision_results):
+              prov_cards.append(
+                  "<div class='card'>"
+                  f"<h3>{html.escape(spec.matter_id)} - {html.escape(spec.kind.replace('_', ' '))}</h3>"
+                  f"<div class='meta'>Due {spec.due_date.date()} | "
+                  f"{len(result.folders_created)} folders | "
+                  f"{len(result.documents_seeded)} seed docs | "
+                  f"{len(result.permissions_set)} permissions</div>"
+                  "</div>"
+              )
+          prov_html = "\n".join(prov_cards)
+
+          # Approval flow rows
+          flow_rows = []
+          for run in flow_summary.runs:
+              status_class = {"signed_off": "ok", "rejected": "warn",
+                              "dead_lettered": "bad", "abstained": "warn"}.get(
+                  run.final_status, "warn"
+              )
+              flow_rows.append(
+                  "<tr>"
+                  f"<td><code>{html.escape(run.document_id)}</code></td>"
+                  f"<td><span class='badge {status_class}'>{run.final_status.upper()}</span></td>"
+                  f"<td>{run.retries}</td>"
+                  f"<td>{len(run.steps)}</td>"
+                  "</tr>"
+              )
+          flow_html = "\n".join(flow_rows)
+
+          # Copilot answer cards
+          ans_cards = []
+          for q, ans in zip(queries, answers):
+              answer_html = html.escape(ans.answer).replace("\n", "<br>")
+              ans_cards.append(
+                  "<div class='card'>"
+                  f"<div class='kicker'>Query</div>"
+                  f"<div class='q'>{html.escape(q)}</div>"
+                  f"<div class='kicker'>Intent</div>"
+                  f"<div><code>{html.escape(ans.intent)}</code></div>"
+                  f"<div class='kicker'>Answer</div>"
+                  f"<div class='a'>{answer_html}</div>"
+                  "</div>"
+              )
+          answers_html = "\n".join(ans_cards)
+
+          site_status_class = "ok" if not site_issues else "bad"
+          site_status_label = "VALID" if not site_issues else f"{len(site_issues)} issues"
+
+          page = f"""<!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Accounting doc/PM system - live demo</title>
+            <style>
+              :root {{
+                --primary: #7c2d12; --accent: #f97316;
+                --bg: #fff7ed; --border: #fed7aa;
+                --ink: #431407; --muted: #78716c;
+                --ok: #047857; --warn: #b45309; --bad: #b91c1c;
+              }}
+              * {{ box-sizing: border-box; }}
+              body {{
+                margin: 0; font-family: 'Segoe UI', system-ui, sans-serif;
+                background: var(--bg); color: var(--ink); line-height: 1.5;
+              }}
+              .hero {{
+                background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+                color: white; padding: 50px 24px 60px;
+              }}
+              .hero-inner {{ max-width: 1000px; margin: 0 auto; }}
+              .hero .kicker {{ font-size: 13px; letter-spacing: 2px; opacity: .8; text-transform: uppercase; }}
+              .hero h1 {{ font-size: 38px; margin: 10px 0 14px; line-height: 1.1; }}
+              .hero p {{ font-size: 17px; margin: 0; opacity: .92; max-width: 760px; }}
+              .container {{ max-width: 1000px; margin: -30px auto 60px; padding: 0 24px; }}
+              .card {{
+                background: white; border: 1px solid var(--border); border-radius: 12px;
+                padding: 20px 24px; margin: 16px 0;
+                box-shadow: 0 1px 3px rgba(124, 45, 18, .08);
+              }}
+              .card h2 {{ margin: 0 0 12px; color: var(--primary); font-size: 22px; }}
+              .card h3 {{ margin: 0 0 8px; color: var(--primary); font-size: 16px; }}
+              .meta {{ color: var(--muted); font-size: 13px; }}
+              .kicker {{ font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin: 8px 0 4px; font-weight: 600; }}
+              .q {{ font-weight: 600; margin-bottom: 8px; }}
+              .a {{ background: #fef3c7; padding: 10px 14px; border-radius: 6px; font-size: 13px; }}
+              table {{ width: 100%; border-collapse: collapse; margin-top: 12px; }}
+              th, td {{ padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px; }}
+              th {{ background: #fed7aa; color: var(--primary); font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }}
+              .badge {{ color: white; padding: 3px 10px; border-radius: 12px; font-size: 11px; letter-spacing: 1px; font-weight: 700; }}
+              .badge.ok {{ background: var(--ok); }}
+              .badge.warn {{ background: var(--warn); }}
+              .badge.bad {{ background: var(--bad); }}
+              .status-badge {{ display: inline-block; padding: 6px 16px; border-radius: 16px; font-weight: 700; color: white; }}
+              .status-badge.ok {{ background: var(--ok); }}
+              .status-badge.bad {{ background: var(--bad); }}
+              code {{ background: #fed7aa; padding: 2px 6px; border-radius: 4px; color: var(--primary); font-size: 12px; }}
+              .summary-line {{ font-family: Consolas, monospace; background: #431407; color: #fed7aa; padding: 14px 18px; border-radius: 6px; font-size: 14px; margin: 16px 0; }}
+              .footer {{ margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; text-align: center; }}
+              .footer a {{ color: var(--accent); }}
+            </style>
+          </head>
+          <body>
+            <div class="hero">
+              <div class="hero-inner">
+                <div class="kicker">Accounting firm &middot; SharePoint + Power Automate + Copilot</div>
+                <h1>Accounting doc/PM system - live demo</h1>
+                <p>End-to-end client onboarding walkthrough against a bundled 10-client mock
+                accounting firm. Site validation, provisioning of 3 matters for a new client,
+                Power Automate approval-flow simulation, and 3 Copilot query answers.
+                Regenerated on every push.</p>
+              </div>
+            </div>
+
+            <div class="container">
+              <div class="card">
+                <h2>Site definition <span class="status-badge {site_status_class}">{site_status_label}</span></h2>
+                <p>4 libraries, 4 roles, 4 matter types.</p>
+                <table>
+                  <thead><tr><th>Library</th><th>Metadata cols</th><th>Retention</th><th>Approval required for</th></tr></thead>
+                  <tbody>{libs_html}</tbody>
+                </table>
+              </div>
+
+              <div class="card">
+                <h2>New client provisioned: Kaminski Auto Repair</h2>
+                <p>3 matters created (tax + Q3 + advisory) with folders across all libraries + role-based permissions.</p>
+                {prov_html}
+              </div>
+
+              <div class="card">
+                <h2>Power Automate approval flow</h2>
+                <div class="summary-line">{html.escape(flow_summary.summary())}</div>
+                <table>
+                  <thead><tr><th>Document</th><th>Final status</th><th>Retries</th><th>Steps</th></tr></thead>
+                  <tbody>{flow_html}</tbody>
+                </table>
+              </div>
+
+              <div class="card">
+                <h2>Copilot query layer</h2>
+                <p>Three canonical intents: matter status, upcoming due dates, unsigned documents per client.</p>
+                {answers_html}
+              </div>
+
+              <div class="footer">
+                Regenerated on every push. Install: <code>pip install -e .</code> then <code>accounting-docs demo</code>.<br>
+                Source: <a href="https://github.com/derekgallardo01/accounting-doc-mgmt">github.com/derekgallardo01/accounting-doc-mgmt</a>
+              </div>
+            </div>
+          </body>
+          </html>
+          """
+
+          with open("site/index.html", "w", encoding="utf-8") as fh:
+              fh.write(page)
+          print("wrote site/index.html")
+          PY
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v5

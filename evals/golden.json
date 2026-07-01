@@ -1,0 +1,64 @@
+{
+  "description": "Path-based assertions covering site validation, matter provisioning, approval flow, and Copilot queries against the mock SharePoint tenant.",
+  "cases": [
+    {
+      "name": "default_site_is_valid",
+      "op": "validate_default_site",
+      "assertions": [
+        {"path": "issue_count", "eq": 0},
+        {"path": "library_count", "eq": 4}
+      ]
+    },
+    {
+      "name": "backend_has_ten_clients",
+      "op": "backend_counts",
+      "assertions": [
+        {"path": "client_count", "eq": 10},
+        {"path": "matter_count", "gte": 15},
+        {"path": "document_count_per_matter", "eq": 5}
+      ]
+    },
+    {
+      "name": "provision_creates_folders_across_all_libraries",
+      "op": "provision_audit_matter",
+      "assertions": [
+        {"path": "folder_library_count", "eq": 4},
+        {"path": "permission_role_count", "gte": 3},
+        {"path": "seed_doc_count", "gte": 1}
+      ]
+    },
+    {
+      "name": "approval_flow_approves_default_run",
+      "op": "approval_flow_default",
+      "assertions": [
+        {"path": "approved_count", "gte": 1},
+        {"path": "dead_lettered_count", "eq": 0}
+      ]
+    },
+    {
+      "name": "copilot_answers_matter_status",
+      "op": "copilot_matter_status",
+      "assertions": [
+        {"path": "intent", "eq": "matter_status"},
+        {"path": "answer", "contains": "Ridgeway Bakery"},
+        {"path": "answer", "contains": "tax return"}
+      ]
+    },
+    {
+      "name": "copilot_finds_due_matters",
+      "op": "copilot_due_60",
+      "assertions": [
+        {"path": "intent", "eq": "due_in_days"},
+        {"path": "matched_count", "gte": 1}
+      ]
+    },
+    {
+      "name": "copilot_lists_unsigned_docs",
+      "op": "copilot_unsigned",
+      "assertions": [
+        {"path": "intent", "eq": "unsigned_docs_for_client"},
+        {"path": "matched_client_count", "eq": 1}
+      ]
+    }
+  ]
+}
