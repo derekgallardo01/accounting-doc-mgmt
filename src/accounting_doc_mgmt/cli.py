@@ -119,6 +119,93 @@ def _answer(query: str) -> None:
     print(f"[{ans.intent}] {ans.answer}")
 
 
+def _capacity_forecast(as_json: bool = False, horizon_weeks: int = 12) -> None:
+    from accounting_doc_mgmt.capacity_planner import DEFAULT_FIRM, forecast_capacity
+    b = get_backend()
+    forecast = forecast_capacity(b, staff=DEFAULT_FIRM, horizon_weeks=horizon_weeks)
+
+    if as_json:
+        print(json.dumps({
+            "summary": forecast.summary(),
+            "horizon_weeks": forecast.horizon_weeks,
+            "bottleneck_count": len(forecast.bottleneck_weeks),
+            "hiring_suggestions": [
+                {"role": h.role, "start_week": h.start_week.date().isoformat(),
+                 "fte_needed": h.fte_needed, "reason": h.reason}
+                for h in forecast.hiring
+            ],
+            "outsource_suggestions": [
+                {"matter_kind": o.matter_kind, "fte_hours_needed": o.fte_hours_needed,
+                 "reason": o.reason}
+                for o in forecast.outsource
+            ],
+        }, indent=2))
+        return
+
+    print(forecast.summary())
+    print()
+    if forecast.bottleneck_weeks:
+        print("Bottleneck weeks (demand > supply):")
+        for slot in forecast.bottleneck_weeks[:10]:
+            print(f"  {slot.week_start.date()}  {slot.role:20s}  "
+                  f"demand={slot.demand_hours:5.0f}h  supply={slot.supply_hours:5.0f}h  "
+                  f"deficit={slot.deficit():5.0f}h")
+        if len(forecast.bottleneck_weeks) > 10:
+            print(f"  ... plus {len(forecast.bottleneck_weeks) - 10} more")
+        print()
+    if forecast.hiring:
+        print("Hiring suggestions:")
+        for h in forecast.hiring:
+            print(f"  - {h.role:20s}  start by {h.start_week.date()}  "
+                  f"{h.fte_needed} FTE")
+            print(f"      {h.reason}")
+        print()
+    if forecast.outsource:
+        print("Outsource suggestions:")
+        for o in forecast.outsource:
+            print(f"  - {o.matter_kind:20s}  ~{o.fte_hours_needed:.0f}h to reassign")
+            print(f"      {o.reason}")
+
+
+def _client_portal(matter_id: str) -> None:
+    from accounting_doc_mgmt.client_portal_provisioner import (
+        MockPortalClient, provision_client_portal,
+    )
+    b = get_backend()
+    matters = [m for m in b.list_matters() if m.id == matter_id]
+    if not matters:
+        print(f"Matter {matter_id!r} not found.")
+        return
+    matter = matters[0]
+    docs = b.list_documents(matter_id)
+    clients = {c.id: c for c in b.list_clients()}
+    client = clients.get(matter.client_id)
+
+    portal_client = MockPortalClient()
+    result = provision_client_portal(
+        matter=matter,
+        documents=docs,
+        client_email=f"contact@{client.name.lower().replace(' ', '')}.com" if client else "client@example.com",
+        client_display_name=client.name if client else "Unknown client",
+        portal_client=portal_client,
+    )
+    print(result.summary())
+    print()
+    for i in result.guest_invites:
+        print(f"  Guest invite: {i.display_name} ({i.email}) -> matter {i.matter_id}")
+    for l in result.sharing_links:
+        print(f"  Sharing link: {l.library:20s}  {l.link_type:10s}  expires {l.expires_at.date()}")
+    if result.warnings:
+        for w in result.warnings:
+            print(f"  WARNING: {w}")
+    print()
+    if result.landing_page:
+        print("Client landing page (markdown preview):")
+        print()
+        for line in result.landing_page.to_markdown().split("\n"):
+            print(f"    {line}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="accounting-docs")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -134,6 +221,15 @@ def main(argv: list[str] | None = None) -> int:
     p_q = sub.add_parser("ask", help="Ask a Copilot-style question.")
     p_q.add_argument("query", type=str)
 
+    p_cap = sub.add_parser("capacity-forecast",
+                           help="Forecast staff capacity vs demand over the next N weeks.")
+    p_cap.add_argument("--horizon-weeks", type=int, default=12)
+    p_cap.add_argument("--json", action="store_true")
+
+    p_port = sub.add_parser("client-portal",
+                            help="Provision the client portal for a specific matter.")
+    p_port.add_argument("matter_id", type=str)
+
     sub.add_parser("demo", help="End-to-end walkthrough.")
 
     args = parser.parse_args(argv)
@@ -146,6 +242,10 @@ def main(argv: list[str] | None = None) -> int:
         _flow_export(out_path=args.out)
     elif args.cmd == "ask":
         _answer(args.query)
+    elif args.cmd == "capacity-forecast":
+        _capacity_forecast(as_json=args.json, horizon_weeks=args.horizon_weeks)
+    elif args.cmd == "client-portal":
+        _client_portal(args.matter_id)
     elif args.cmd == "demo":
         _demo()
     else:

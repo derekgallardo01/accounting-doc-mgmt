@@ -1,5 +1,24 @@
 """SharePoint + Power Automate doc/PM kit for accounting firms."""
 from accounting_doc_mgmt.backend import Client, Document, MockSharePoint, Matter, get_backend
+from accounting_doc_mgmt.capacity_planner import (
+    CapacityForecast,
+    HiringSuggestion,
+    OutsourceSuggestion,
+    Staff,
+    WeeklySlot,
+    DEFAULT_EFFORT_ESTIMATES,
+    DEFAULT_FIRM,
+    forecast_capacity,
+)
+from accounting_doc_mgmt.client_portal_provisioner import (
+    GuestInvite,
+    LandingPage,
+    LandingPageItem,
+    MockPortalClient,
+    ProvisioningResult,
+    SharingLink,
+    provision_client_portal,
+)
 from accounting_doc_mgmt.matter_provisioner import (
     MatterSpec,
     ProvisionResult,
@@ -33,4 +52,19 @@ __all__ = [
     "answer_query",
     "SiteDefinition",
     "load_site_definition",
+    "CapacityForecast",
+    "HiringSuggestion",
+    "OutsourceSuggestion",
+    "Staff",
+    "WeeklySlot",
+    "DEFAULT_EFFORT_ESTIMATES",
+    "DEFAULT_FIRM",
+    "forecast_capacity",
+    "GuestInvite",
+    "LandingPage",
+    "LandingPageItem",
+    "MockPortalClient",
+    "ProvisioningResult",
+    "SharingLink",
+    "provision_client_portal",
 ]

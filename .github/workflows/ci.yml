@@ -39,4 +39,6 @@ jobs:
           accounting-docs validate-site > /dev/null
           accounting-docs flow-export > /dev/null
           accounting-docs ask "status of matter m-01-tax-2026" > /dev/null
+          accounting-docs capacity-forecast --json --horizon-weeks 26 > /dev/null
+          accounting-docs client-portal m-01-tax-2026 > /dev/null
           accounting-docs demo > /dev/null

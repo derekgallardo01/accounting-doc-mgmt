@@ -23,10 +23,12 @@ accounting-docs validate-site                               # check site definit
 accounting-docs flow-export --out approval-flow.json        # Power Automate JSON
 accounting-docs ask "What's the status of matter m-01-tax-2026?"
 accounting-docs ask "Which matters are due in the next 30 days?"
+accounting-docs capacity-forecast --horizon-weeks 52        # tax-season staff planner
+accounting-docs client-portal m-01-tax-2026                 # provision external client portal
 ```
 
 ```bash
-python -m pytest -q     # 38 unit tests
+python -m pytest -q     # 58 unit tests
 python evals/run.py     # 7 golden eval cases
 ```
 
@@ -142,6 +144,62 @@ in_review=1, signed_off=3. Partner: sarah.jones@acmecpas.onmicrosoft.com.
 Senior: raj.patel@acmecpas.onmicrosoft.com.
 ```
 
+## Tax-season capacity planner
+
+Every accounting firm hits the same problem in mid-January: they think
+they have enough staff for the April 15 deadline, then realize on
+March 10 that they don't. By then it's too late to hire. The capacity
+planner projects weekly demand vs supply against the current matter
+book and flags the specific weeks + roles + FTE gap:
+
+```
+$ accounting-docs capacity-forecast --horizon-weeks 52
+Capacity forecast: 52 weeks, 1 bottleneck slots,
+0 hiring suggestions, 1 outsource suggestions
+
+Bottleneck weeks (demand > supply):
+  2027-04-12  Senior Accountant     demand=60h  supply=40h  deficit=20h
+
+Outsource suggestions:
+  - tax_return            ~60h to reassign
+      'tax_return' matters contribute 100% of total capacity deficit
+      (60 hours). Consider outsourcing overflow.
+```
+
+Per-role effort estimates per matter kind are tunable in
+[`capacity_planner.py::DEFAULT_EFFORT_ESTIMATES`](src/accounting_doc_mgmt/capacity_planner.py).
+
+## Client portal provisioner
+
+Small accounting firms typically start with clients emailing PDFs
+around. That works until the firm gets audited on data handling and
+someone asks 'where's the audit trail for who accessed which W-2?'.
+The client portal is the answer: guest access to a specific matter's
+document library, expiring share links, per-matter role authorization,
+and a landing page showing what's due from the client.
+
+```
+$ accounting-docs client-portal m-01-tax-2026
+Portal provisioning for m-01-tax-2026: 1 guest invite(s), 2 sharing link(s)
+
+  Guest invite: Ridgeway Bakery (contact@ridgewaybakery.com)
+  Sharing link: Source Documents      edit        expires 2026-09-29
+  Sharing link: Deliverables          view_only   expires 2026-09-29
+
+Client landing page (markdown preview):
+    # Client portal - Ridgeway Bakery
+
+    ## Please provide
+    - **W-2** - Upload your W-2 to the Source Documents folder
+    - **Prior-year return** - Upload to the Source Documents folder
+
+    ## Received - being reviewed by our team
+    - 1099-Div
+```
+
+Sharing-link expiry defaults to 90 days per typical data-handling
+policy. Longer expiries trigger a warning in the provisioning result.
+
 ## Architecture
 
 ```mermaid
@@ -174,9 +232,11 @@ methods against `msgraph-sdk` is ~150 lines. See
 | `src/accounting_doc_mgmt/matter_provisioner.py` | Provision new matter (folders + docs + permissions) |
 | `src/accounting_doc_mgmt/approval_flow.py` | 3-step approval simulator + retry/DLQ + Power Automate JSON export |
 | `src/accounting_doc_mgmt/copilot_index.py` | 3-intent Copilot query layer with keyword-based classifier |
-| `src/accounting_doc_mgmt/cli.py` | `list-matters / validate-site / flow-export / ask / demo` |
+| `src/accounting_doc_mgmt/capacity_planner.py` | Weekly demand vs supply forecast + hiring / outsource suggestions |
+| `src/accounting_doc_mgmt/client_portal_provisioner.py` | External client portal: guest invites + expiring links + landing page |
+| `src/accounting_doc_mgmt/cli.py` | `list-matters / validate-site / flow-export / ask / capacity-forecast / client-portal / demo` |
 | `examples/onboard_client.py` | Full onboarding pipeline -> markdown report |
-| `tests/` | 38 pytest tests |
+| `tests/` | 58 pytest tests |
 | `evals/golden.json` | 7 path-based golden cases |
 | `evals/run.py` | Eval harness |
 | `pyproject.toml` | Package + `accounting-docs` script entry |
